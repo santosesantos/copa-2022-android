@@ -8,15 +8,21 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.dio.copa.catar.core.BaseViewModel
+import me.dio.copa.catar.domain.model.MatchDomain
+import me.dio.copa.catar.domain.usecase.DisableNotificationUseCase
+import me.dio.copa.catar.domain.usecase.EnableNotificationUseCase
 import me.dio.copa.catar.domain.usecase.GetMatchesUseCase
 import me.dio.copa.catar.remote.UnexpectedException
 import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val getMatchesUseCase: GetMatchesUseCase
-): BaseViewModel<MainUIState, MainUIAction>(MainUIState()){
+    private val getMatchesUseCase: GetMatchesUseCase,
+    private val disableNotificationUseCase: DisableNotificationUseCase,
+    private val enableNotificationUseCase: EnableNotificationUseCase
+) : BaseViewModel<MainUIState, MainUIAction>(MainUIState()) {
 
     init {
         fetchMatches()
@@ -26,10 +32,11 @@ class MainViewModel @Inject constructor(
         getMatchesUseCase()
             .flowOn(Dispatchers.Main)
             .catch {
-                when(it) {
+                when (it) {
                     is NotFoundException -> {
                         sendAction(MainUIAction.MatchesNotFound(it.message ?: "Erro sem mensagem"))
                     }
+
                     is UnexpectedException -> {
                         sendAction(MainUIAction.Unexpected)
                     }
@@ -39,5 +46,23 @@ class MainViewModel @Inject constructor(
                     copy(matches = matches)
                 }
             }
+    }
+
+    fun toggleNotification(match: MatchDomain) {
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.Main) {
+                    val action = if (match.notificationEnabled) {
+                        disableNotificationUseCase(match.id)
+                        MainUIAction.DisableNotification(match)
+                    } else {
+                        enableNotificationUseCase(match.id)
+                        MainUIAction.EnableNotification(match)
+                    }
+
+                    sendAction(action)
+                }
+            }
+        }
     }
 }
